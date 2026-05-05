@@ -1,0 +1,50 @@
+@import url('https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Prompt", ui-sans-serif, system-ui, sans-serif;
+  --color-brand: #F59E0B;
+  --color-brand-dark: #B45309;
+}
+
+body {
+  @apply bg-[#FBBF24] text-gray-800 antialiased;
+  font-family: 'Prompt', sans-serif;
+}
+
+.minimal-card {
+  @apply bg-white rounded-[32px] p-8 shadow-xl border-4 border-yellow-400 hover:shadow-2xl transition-all duration-300;
+}
+
+.input-field {
+  @apply w-full px-5 py-3 rounded-2xl bg-amber-50 border-2 border-amber-200 focus:bg-white focus:border-amber-600 focus:ring-4 focus:ring-amber-500/10 outline-none transition-all duration-200 text-lg font-medium;
+}
+
+.btn-primary {
+  @apply px-6 py-4 bg-[#D97706] hover:bg-[#B45309] text-white font-black rounded-2xl shadow-lg transition-all active:scale-95 disabled:opacity-50 disabled:pointer-events-none flex items-center justify-center gap-2 text-xl border-b-6 border-amber-900;
+}
+
+.btn-secondary {
+  @apply px-6 py-3 bg-white border-2 border-[#FDE68A] hover:bg-amber-50 text-amber-800 font-semibold rounded-2xl transition-all active:scale-95 flex items-center justify-center gap-2;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+}
+::-webkit-scrollbar-track {
+  @apply bg-transparent;
+}
+::-webkit-scrollbar-thumb {
+  @apply bg-yellow-200 rounded-full hover:bg-yellow-300 transition-colors;
+}
+
+@keyframes float {
+  0% { transform: translateY(0px); }
+  50% { transform: translateY(-10px); }
+  100% { transform: translateY(0px); }
+}
+
+.animate-float {
+  animation: float 3s ease-in-out infinite;
+}

@@ -337,7 +337,9 @@ export default function App() {
     pending: filteredPlans.filter(p => p.status === 'pending').length
   };
 
-  const chartData = CONFIG.DEPARTMENTS.map(dept => ({
+  const chartData = CONFIG.DEPARTMENTS
+    .filter(dept => deptFilter === 'ทั้งหมด' || dept === deptFilter)
+    .map(dept => ({
     name: dept.length > 10 ? dept.substring(0, 10) + '...' : dept,
     fullname: dept,
     count: filteredPlans.filter(p => p.department === dept).length
@@ -517,6 +519,9 @@ export default function App() {
                           </select>
                           <select className="bg-amber-100 text-lg font-black px-6 py-3 rounded-2xl outline-none border-2 border-amber-200" value={termFilter} onChange={(e) => setTermFilter(e.target.value)}>
                             {['ทั้งหมด', ...CONFIG.SEMESTERS].map(s => <option key={s} value={s}>{s === 'ทั้งหมด' ? 'ภาคเรียน: ทั้งหมด' : `ภาคเรียนที่ ${s}`}</option>)}
+                          </select>
+                          <select className="bg-amber-100 text-lg font-black px-6 py-3 rounded-2xl outline-none border-2 border-amber-200" value={deptFilter} onChange={(e) => setDeptFilter(e.target.value)}>
+                            {['ทั้งหมด', ...CONFIG.DEPARTMENTS].map(d => <option key={d} value={d}>{d === 'ทั้งหมด' ? 'กลุ่มสาระ: ทั้งหมด' : d}</option>)}
                           </select>
                         </div>
                       </div>

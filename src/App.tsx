@@ -71,8 +71,8 @@ export default function App() {
 
   // Check Section Filters
   const [checkSearch, setCheckSearch] = useState('');
-  const [checkYear, setCheckYear] = useState('2567');
-  const [checkTerm, setCheckTerm] = useState('2');
+  const [checkYear, setCheckYear] = useState('2569');
+  const [checkTerm, setCheckTerm] = useState('1');
   const [checkDept, setCheckDept] = useState('ทั้งหมด');
   const [checkStatus, setCheckStatus] = useState('pending');
 
@@ -83,21 +83,19 @@ export default function App() {
 
   // History Filters
   const [hSearch, setHSearch] = useState('ทั้งหมด');
-  const [hYear, setHYear] = useState('ทั้งหมด');
-  const [hTerm, setHTerm] = useState('ทั้งหมด');
+  const [hYear, setHYear] = useState('2569');
+  const [hTerm, setHTerm] = useState('1');
   const [hDept, setHDept] = useState('ทั้งหมด');
   const [hCheckStatus, setHCheckStatus] = useState('ทั้งหมด');
   const [hApproveStatus, setHApproveStatus] = useState('ทั้งหมด');
   const [historyList, setHistoryList] = useState<LessonPlan[]>([]);
+  const [filterVersion, setFilterVersion] = useState(0); // For manual trigger
 
   const uniqueHNames = Array.from(new Set(plans.map(p => p.userName?.trim()))).filter(Boolean).sort();
-  const uniqueHYears = Array.from(new Set(plans.map(p => String(p.year)))).filter(y => y && y !== 'undefined' && y !== 'null').sort();
-  const uniqueHTerms = Array.from(new Set(plans.map(p => String(p.semester)))).filter(t => t && t !== 'undefined' && t !== 'null').sort();
   const uniqueHDepts = Array.from(new Set(plans.map(p => p.department?.trim()))).filter(Boolean).sort();
 
-  // Update history list reactively or on button click
-  // User asked for a search button, but also wants selection to reflect accurately.
-  const applyHistoryFilters = () => {
+  // Unified Filter Logic
+  useEffect(() => {
     const list = plans.filter(p => {
       const matchSearch = hSearch === 'ทั้งหมด' || String(p.userName || '').trim().toLowerCase() === hSearch.trim().toLowerCase();
       const matchYear = hYear === 'ทั้งหมด' || String(p.year) === String(hYear);
@@ -107,7 +105,7 @@ export default function App() {
       let matchCheck = true;
       if (hCheckStatus === 'checked') matchCheck = p.status === 'checked' || p.status === 'approved';
       if (hCheckStatus === 'pending') matchCheck = p.status === 'pending';
-
+      
       let matchApprove = true;
       if (hApproveStatus === 'approved') matchApprove = p.status === 'approved';
       if (hApproveStatus === 'pending') matchApprove = p.status === 'pending' || p.status === 'checked';
@@ -115,20 +113,30 @@ export default function App() {
       return matchSearch && matchYear && matchTerm && matchDept && matchCheck && matchApprove;
     });
     setHistoryList(list);
-  };
+  }, [plans, filterVersion]); // Only update when plans loads or when button is pressed
 
-  useEffect(() => {
-    applyHistoryFilters();
-  }, [plans]); // Re-filter when data changes
+  const applyHistoryFilters = () => {
+    setFilterVersion(v => v + 1);
+    // Visual feedback
+    Swal.fire({
+      toast: true,
+      position: 'top-end',
+      icon: 'success',
+      title: 'กรองข้อมูลเรียบร้อยแล้ว',
+      showConfirmButton: false,
+      timer: 1500,
+      timerProgressBar: true
+    });
+  };
 
   const handleResetHistory = () => {
     setHSearch('ทั้งหมด');
-    setHYear('ทั้งหมด');
-    setHTerm('ทั้งหมด');
+    setHYear('2569');
+    setHTerm('1');
     setHDept('ทั้งหมด');
     setHCheckStatus('ทั้งหมด');
     setHApproveStatus('ทั้งหมด');
-    setHistoryList(plans);
+    setFilterVersion(v => v + 1);
   };
 
   useEffect(() => {
@@ -792,26 +800,7 @@ export default function App() {
                         <select 
                           className="w-full px-2 py-0 rounded-xl bg-white border-2 border-amber-200 focus:border-amber-600 outline-none transition-all duration-200 text-[10px] font-bold h-9 cursor-pointer hover:border-amber-400" 
                           value={hSearch} 
-                          onChange={(e) => {
-                            const val = e.target.value;
-                            setHSearch(val);
-                            const list = plans.filter(p => {
-                              const matchSearch = val === 'ทั้งหมด' || String(p.userName || '').trim().toLowerCase() === val.trim().toLowerCase();
-                              const matchYear = hYear === 'ทั้งหมด' || String(p.year) === String(hYear);
-                              const matchTerm = hTerm === 'ทั้งหมด' || String(p.semester) === String(hTerm);
-                              const matchDept = hDept === 'ทั้งหมด' || String(p.department || '').trim() === hDept.trim();
-                              
-                              let mc = true;
-                              if (hCheckStatus === 'checked') mc = p.status === 'checked' || p.status === 'approved';
-                              if (hCheckStatus === 'pending') mc = p.status === 'pending';
-                              let ma = true;
-                              if (hApproveStatus === 'approved') ma = p.status === 'approved';
-                              if (hApproveStatus === 'pending') ma = p.status === 'pending' || p.status === 'checked';
-                              
-                              return matchSearch && matchYear && matchTerm && matchDept && mc && ma;
-                            });
-                            setHistoryList(list);
-                          }}
+                          onChange={(e) => setHSearch(e.target.value)}
                         >
                           <option value="ทั้งหมด">ทั้งหมด (ทุกชื่อ)</option>
                           {uniqueHNames.map(name => <option key={name} value={name}>{name}</option>)}
@@ -822,29 +811,10 @@ export default function App() {
                         <select 
                           className="w-full px-2 py-0 rounded-xl bg-white border-2 border-amber-200 focus:border-amber-600 outline-none transition-all duration-200 text-[10px] font-bold h-9 cursor-pointer hover:border-amber-400" 
                           value={hYear} 
-                          onChange={(e) => {
-                            const val = e.target.value;
-                            setHYear(val);
-                            const list = plans.filter(p => {
-                              const matchSearch = hSearch === 'ทั้งหมด' || String(p.userName || '').trim().toLowerCase() === hSearch.trim().toLowerCase();
-                              const matchYear = val === 'ทั้งหมด' || String(p.year) === String(val);
-                              const matchTerm = hTerm === 'ทั้งหมด' || String(p.semester) === String(hTerm);
-                              const matchDept = hDept === 'ทั้งหมด' || String(p.department || '').trim() === hDept.trim();
-                              
-                              let mc = true;
-                              if (hCheckStatus === 'checked') mc = p.status === 'checked' || p.status === 'approved';
-                              if (hCheckStatus === 'pending') mc = p.status === 'pending';
-                              let ma = true;
-                              if (hApproveStatus === 'approved') ma = p.status === 'approved';
-                              if (hApproveStatus === 'pending') ma = p.status === 'pending' || p.status === 'checked';
-
-                              return matchSearch && matchYear && matchTerm && matchDept && mc && ma;
-                            });
-                            setHistoryList(list);
-                          }}
+                          onChange={(e) => setHYear(e.target.value)}
                         >
                           <option value="ทั้งหมด">ทั้งหมด</option>
-                          {uniqueHYears.map(y => <option key={y} value={y}>{y}</option>)}
+                          {CONFIG.YEARS.map(y => <option key={y} value={y}>{y}</option>)}
                         </select>
                       </div>
                       <div className="space-y-1">
@@ -852,29 +822,10 @@ export default function App() {
                         <select 
                           className="w-full px-2 py-0 rounded-xl bg-white border-2 border-amber-200 focus:border-amber-600 outline-none transition-all duration-200 text-[10px] font-bold h-9 cursor-pointer hover:border-amber-400" 
                           value={hTerm} 
-                          onChange={(e) => {
-                            const val = e.target.value;
-                            setHTerm(val);
-                            const list = plans.filter(p => {
-                              const matchSearch = hSearch === 'ทั้งหมด' || String(p.userName || '').trim().toLowerCase() === hSearch.trim().toLowerCase();
-                              const matchYear = hYear === 'ทั้งหมด' || String(p.year) === String(hYear);
-                              const matchTerm = val === 'ทั้งหมด' || String(p.semester) === String(val);
-                              const matchDept = hDept === 'ทั้งหมด' || String(p.department || '').trim() === hDept.trim();
-                              
-                              let mc = true;
-                              if (hCheckStatus === 'checked') mc = p.status === 'checked' || p.status === 'approved';
-                              if (hCheckStatus === 'pending') mc = p.status === 'pending';
-                              let ma = true;
-                              if (hApproveStatus === 'approved') ma = p.status === 'approved';
-                              if (hApproveStatus === 'pending') ma = p.status === 'pending' || p.status === 'checked';
-
-                              return matchSearch && matchYear && matchTerm && matchDept && mc && ma;
-                            });
-                            setHistoryList(list);
-                          }}
+                          onChange={(e) => setHTerm(e.target.value)}
                         >
                           <option value="ทั้งหมด">ทั้งหมด</option>
-                          {uniqueHTerms.map(s => <option key={s} value={s}>{`ภาคเรียนที่ ${s}`}</option>)}
+                          {CONFIG.SEMESTERS.map(s => <option key={s} value={s}>{`ภาคเรียนที่ ${s}`}</option>)}
                         </select>
                       </div>
                       <div className="space-y-1">
@@ -882,26 +833,7 @@ export default function App() {
                         <select 
                           className="w-full px-2 py-0 rounded-xl bg-white border-2 border-amber-200 focus:border-amber-600 outline-none transition-all duration-200 text-[10px] font-bold h-9 cursor-pointer hover:border-amber-400" 
                           value={hDept} 
-                          onChange={(e) => {
-                            const val = e.target.value;
-                            setHDept(val);
-                            const list = plans.filter(p => {
-                              const matchSearch = hSearch === 'ทั้งหมด' || String(p.userName || '').trim().toLowerCase() === hSearch.trim().toLowerCase();
-                              const matchYear = hYear === 'ทั้งหมด' || String(p.year) === String(hYear);
-                              const matchTerm = hTerm === 'ทั้งหมด' || String(p.semester) === String(hTerm);
-                              const matchDept = val === 'ทั้งหมด' || String(p.department || '').trim() === val.trim();
-                              
-                              let mc = true;
-                              if (hCheckStatus === 'checked') mc = p.status === 'checked' || p.status === 'approved';
-                              if (hCheckStatus === 'pending') mc = p.status === 'pending';
-                              let ma = true;
-                              if (hApproveStatus === 'approved') ma = p.status === 'approved';
-                              if (hApproveStatus === 'pending') ma = p.status === 'pending' || p.status === 'checked';
-
-                              return matchSearch && matchYear && matchTerm && matchDept && mc && ma;
-                            });
-                            setHistoryList(list);
-                          }}
+                          onChange={(e) => setHDept(e.target.value)}
                         >
                           <option value="ทั้งหมด">ทั้งหมด</option>
                           {uniqueHDepts.map(d => <option key={d} value={d}>{d}</option>)}
@@ -912,26 +844,7 @@ export default function App() {
                         <select 
                           className="w-full px-2 py-0 rounded-xl bg-white border-2 border-amber-200 focus:border-amber-600 outline-none transition-all duration-200 text-[10px] font-bold h-9 cursor-pointer hover:border-amber-400" 
                           value={hCheckStatus} 
-                          onChange={(e) => {
-                            const val = e.target.value;
-                            setHCheckStatus(val);
-                            const list = plans.filter(p => {
-                              const matchSearch = hSearch === 'ทั้งหมด' || String(p.userName || '').trim().toLowerCase() === hSearch.trim().toLowerCase();
-                              const matchYear = hYear === 'ทั้งหมด' || String(p.year) === String(hYear);
-                              const matchTerm = hTerm === 'ทั้งหมด' || String(p.semester) === String(hTerm);
-                              const matchDept = hDept === 'ทั้งหมด' || String(p.department || '').trim() === hDept.trim();
-                              
-                              let mc = true;
-                              if (val === 'checked') mc = p.status === 'checked' || p.status === 'approved';
-                              if (val === 'pending') mc = p.status === 'pending';
-                              let ma = true;
-                              if (hApproveStatus === 'approved') ma = p.status === 'approved';
-                              if (hApproveStatus === 'pending') ma = p.status === 'pending' || p.status === 'checked';
-
-                              return matchSearch && matchYear && matchTerm && matchDept && mc && ma;
-                            });
-                            setHistoryList(list);
-                          }}
+                          onChange={(e) => setHCheckStatus(e.target.value)}
                         >
                           <option value="ทั้งหมด">ทั้งหมด</option>
                           <option value="pending">ยังไม่ตรวจ</option>
@@ -943,26 +856,7 @@ export default function App() {
                         <select 
                           className="w-full px-2 py-0 rounded-xl bg-white border-2 border-amber-200 focus:border-amber-600 outline-none transition-all duration-200 text-[10px] font-bold h-9 cursor-pointer hover:border-amber-400" 
                           value={hApproveStatus} 
-                          onChange={(e) => {
-                            const val = e.target.value;
-                            setHApproveStatus(val);
-                            const list = plans.filter(p => {
-                              const matchSearch = hSearch === 'ทั้งหมด' || String(p.userName || '').trim().toLowerCase() === hSearch.trim().toLowerCase();
-                              const matchYear = hYear === 'ทั้งหมด' || String(p.year) === String(hYear);
-                              const matchTerm = hTerm === 'ทั้งหมด' || String(p.semester) === String(hTerm);
-                              const matchDept = hDept === 'ทั้งหมด' || String(p.department || '').trim() === hDept.trim();
-                              
-                              let mc = true;
-                              if (hCheckStatus === 'checked') mc = p.status === 'checked' || p.status === 'approved';
-                              if (hCheckStatus === 'pending') mc = p.status === 'pending';
-                              let ma = true;
-                              if (val === 'approved') ma = p.status === 'approved';
-                              if (val === 'pending') ma = p.status === 'pending' || p.status === 'checked';
-
-                              return matchSearch && matchYear && matchTerm && matchDept && mc && ma;
-                            });
-                            setHistoryList(list);
-                          }}
+                          onChange={(e) => setHApproveStatus(e.target.value)}
                         >
                           <option value="ทั้งหมด">ทั้งหมด</option>
                           <option value="pending">ยังไม่อนุมัติ</option>
@@ -971,10 +865,13 @@ export default function App() {
                       </div>
                       <div className="flex gap-2">
                         <button 
-                          onClick={applyHistoryFilters}
+                          type="button"
+                          onClick={() => {
+                            applyHistoryFilters();
+                          }}
                           className="flex-1 bg-amber-600 hover:bg-amber-700 text-white font-black text-xs h-9 rounded-xl shadow-lg border-b-4 border-amber-950 flex items-center justify-center gap-2 transition-all active:scale-95 active:border-b-0 active:translate-y-1"
                         >
-                          <Search size={14} /> กรอง
+                          <Search size={14} /> กรองข้อมูล
                         </button>
                         <button 
                           onClick={handleResetHistory}

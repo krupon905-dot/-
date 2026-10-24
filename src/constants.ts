@@ -27,5 +27,7 @@ export const CONFIG = {
     'มัธยมศึกษาปีที่ 6'
   ],
   YEARS: ['2569', '2568', '2567'],
-  SEMESTERS: ['1', '2']
+  SEMESTERS: ['1', '2'],
+  CURRENT_YEAR: '2569',
+  CURRENT_SEMESTER: '1'
 };

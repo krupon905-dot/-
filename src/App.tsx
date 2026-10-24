@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { 
   BarChart3, 
   PlusCircle, 
@@ -21,7 +21,9 @@ import {
   Layers,
   BookOpen,
   Star,
-  FileDown
+  FileDown,
+  Users,
+  RefreshCw
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
@@ -32,12 +34,17 @@ import {
   CartesianGrid, 
   Tooltip, 
   ResponsiveContainer, 
-  Cell 
+  Cell,
+  Legend,
+  LabelList
 } from 'recharts';
 import Swal from 'sweetalert2';
 import { format } from 'date-fns';
 import { th } from 'date-fns/locale';
 import { CONFIG } from './constants';
+import { DEFAULT_SHEET2_TEACHERS, Sheet2Teacher } from './data/defaultTeachers';
+import { fetchSheet2Teachers, normalizeDepartment, isTeacherSubmitted } from './services/sheet2Service';
+import UnsubmittedTeachersReport from './components/UnsubmittedTeachersReport';
 
 // Types
 interface LessonPlan {
@@ -62,6 +69,8 @@ interface LessonPlan {
 
 export default function App() {
   const [plans, setPlans] = useState<LessonPlan[]>([]);
+  const [teachers, setTeachers] = useState<Sheet2Teacher[]>(DEFAULT_SHEET2_TEACHERS);
+  const [isRefreshingTeachers, setIsRefreshingTeachers] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -76,9 +85,9 @@ export default function App() {
   const [checkDept, setCheckDept] = useState('ทั้งหมด');
   const [checkStatus, setCheckStatus] = useState('pending');
 
-  // Dashbaord Filters
-  const [yearFilter, setYearFilter] = useState('ทั้งหมด');
-  const [termFilter, setTermFilter] = useState('ทั้งหมด');
+  // Dashboard Filters
+  const [yearFilter, setYearFilter] = useState('2569');
+  const [termFilter, setTermFilter] = useState('1');
   const [deptFilter, setDeptFilter] = useState('ทั้งหมด');
 
   // History Filters
@@ -141,7 +150,22 @@ export default function App() {
 
   useEffect(() => {
     fetchData();
+    reloadTeachers();
   }, []);
+
+  const reloadTeachers = async () => {
+    try {
+      setIsRefreshingTeachers(true);
+      const data = await fetchSheet2Teachers(CONFIG.SHEET_ID);
+      if (data && data.length > 0) {
+        setTeachers(data);
+      }
+    } catch (err) {
+      console.warn('Could not reload Sheet2 teachers:', err);
+    } finally {
+      setIsRefreshingTeachers(false);
+    }
+  };
 
   const fetchData = async () => {
     try {
@@ -345,13 +369,62 @@ export default function App() {
     pending: filteredPlans.filter(p => p.status === 'pending').length
   };
 
-  const chartData = CONFIG.DEPARTMENTS
-    .filter(dept => deptFilter === 'ทั้งหมด' || dept === deptFilter)
-    .map(dept => ({
-    name: dept.length > 10 ? dept.substring(0, 10) + '...' : dept,
-    fullname: dept,
-    count: filteredPlans.filter(p => p.department === dept).length
-  }));
+  const getShortDeptName = (dept: string) => {
+    if (dept.includes('วิทยาศาสตร์')) return 'วิทยาศาสตร์ฯ';
+    if (dept.includes('สังคมศึกษา')) return 'สังคมศึกษาฯ';
+    if (dept.includes('สุขศึกษา') || dept.includes('พลศึกษา')) return 'สุขศึกษา/พลฯ';
+    if (dept.includes('กิจกรรมพัฒนาผู้เรียน') || dept.includes('แนะแนว')) return 'แนะแนว/กิจกรรมฯ';
+    if (dept.includes('ต่างประเทศ')) return 'ต่างประเทศ';
+    return dept;
+  };
+
+  const chartData = useMemo(() => {
+    const baseDepts = [
+      'วิทยาศาสตร์และเทคโนโลยี',
+      'คณิตศาสตร์',
+      'ศิลปะ',
+      'ภาษาไทย',
+      'ภาษาต่างประเทศ',
+      'สังคมศึกษา ศาสนาและวัฒนธรรม',
+      'การงานอาชีพ',
+      'สุขศึกษาและพลศึกษา',
+      'กิจกรรมพัฒนาผู้เรียน / แนะแนว'
+    ];
+
+    const targetDepts = deptFilter === 'ทั้งหมด' 
+      ? baseDepts 
+      : baseDepts.filter(d => {
+          const normFilter = normalizeDepartment(deptFilter);
+          const normD = normalizeDepartment(d);
+          return normD === normFilter || d === deptFilter || d.includes(deptFilter) || deptFilter.includes(d);
+        });
+
+    return targetDepts.map(dept => {
+      const normDept = normalizeDepartment(dept);
+      
+      // Teachers in this department from Sheet2
+      const deptTeachers = teachers.filter(t => normalizeDepartment(t.department) === normDept);
+      const totalTeachers = deptTeachers.length;
+
+      // Teachers who have submitted a lesson plan matching yearFilter and termFilter
+      const submittedTeachers = deptTeachers.filter(t => 
+        isTeacherSubmitted(t, plans, yearFilter, termFilter).hasSubmitted
+      );
+
+      const submittedCount = submittedTeachers.length;
+      const unsubmittedCount = Math.max(0, totalTeachers - submittedCount);
+
+      return {
+        name: dept,
+        displayName: getShortDeptName(dept),
+        fullname: dept,
+        submitted: submittedCount,
+        unsubmitted: unsubmittedCount,
+        total: totalTeachers,
+        rate: totalTeachers > 0 ? Math.round((submittedCount / totalTeachers) * 100) : 0
+      };
+    });
+  }, [teachers, plans, yearFilter, termFilter, deptFilter]);
 
   const NavButton = ({ tabId, icon: Icon, label, color, isProtected }: { tabId: string, icon: any, label: string, color: string, isProtected?: boolean }) => {
     const handleTabClick = async () => {
@@ -498,65 +571,224 @@ export default function App() {
                    exit={{ opacity: 0, y: -20 }}
                    className="space-y-12"
                  >
-                    <div className="flex items-center gap-6 border-l-[12px] border-amber-500 pl-8 h-12 md:h-14">
-                      <BarChart3 size={40} className="text-amber-600" />
-                      <h2 className="text-3xl md:text-4xl font-black text-amber-950 leading-none">รายงานข้อมูลการส่งแผน</h2>
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-l-[12px] border-amber-500 pl-8 h-auto py-2">
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-3">
+                          <BarChart3 size={38} className="text-amber-600" />
+                          <h2 className="text-3xl md:text-4xl font-black text-amber-950 leading-none">รายงานข้อมูลการส่งแผน</h2>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2 pt-1 text-sm md:text-base font-bold text-amber-900/80">
+                          <span>ข้อมูลประจำ:</span>
+                          <span className="font-black text-amber-950 bg-amber-100 px-3 py-0.5 rounded-xl border border-amber-300">
+                            {yearFilter === 'ทั้งหมด' ? 'ทุกปีการศึกษา' : `ปีการศึกษา ${yearFilter}`} {termFilter === 'ทั้งหมด' ? 'ทุกภาคเรียน' : `ภาคเรียนที่ ${termFilter}`}
+                          </span>
+                          {yearFilter === CONFIG.CURRENT_YEAR && termFilter === CONFIG.CURRENT_SEMESTER ? (
+                            <span className="bg-emerald-600 text-white text-xs font-black px-3 py-1 rounded-full shadow-sm flex items-center gap-1.5">
+                              <span className="w-2 h-2 rounded-full bg-emerald-200 animate-pulse"></span>
+                              ภาคเรียนที่ {CONFIG.CURRENT_SEMESTER}/{CONFIG.CURRENT_YEAR}
+                            </span>
+                          ) : (
+                            <span className="bg-amber-200 text-amber-950 text-xs font-black px-3 py-1 rounded-full">
+                              ข้อมูลย้อนหลัง / กรองกำหนดเอง
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      {(yearFilter !== CONFIG.CURRENT_YEAR || termFilter !== CONFIG.CURRENT_SEMESTER) && (
+                        <button
+                          onClick={() => {
+                            setYearFilter(CONFIG.CURRENT_YEAR);
+                            setTermFilter(CONFIG.CURRENT_SEMESTER);
+                          }}
+                          className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-amber-500 hover:bg-amber-600 text-white font-black text-sm shadow-md transition-all self-start md:self-auto active:scale-95"
+                          title={`สลับกลับสู่ปีการศึกษา ${CONFIG.CURRENT_YEAR} ภาคเรียนที่ ${CONFIG.CURRENT_SEMESTER}`}
+                        >
+                          <RefreshCw size={16} />
+                          <span>ดูเทอม {CONFIG.CURRENT_SEMESTER}/{CONFIG.CURRENT_YEAR}</span>
+                        </button>
+                      )}
                     </div>
                     
                     <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
                       {[
-                        { label: 'ส่งแผนทั้งหมด', value: stats.total, color: 'bg-yellow-200', icon: FileText },
-                        { label: 'ผ่านการตรวจ', value: stats.checked, color: 'bg-blue-200', icon: CheckSquare },
-                        { label: 'อนุมัติแล้ว', value: stats.approved, color: 'bg-green-200', icon: Star },
-                        { label: 'รอรับการตรวจ', value: stats.pending, color: 'bg-orange-200', icon: Loader2 },
+                        { label: 'ส่งแผนทั้งหมด', value: stats.total, color: 'bg-yellow-200', icon: FileText, sub: `เทอม ${termFilter}/${yearFilter}` },
+                        { label: 'ผ่านการตรวจ', value: stats.checked, color: 'bg-blue-200', icon: CheckSquare, sub: 'ตรวจลงนามแล้ว' },
+                        { label: 'อนุมัติแล้ว', value: stats.approved, color: 'bg-green-200', icon: Star, sub: 'ผู้อำนวยการอนุมัติ' },
+                        { label: 'รอรับการตรวจ', value: stats.pending, color: 'bg-orange-200', icon: Loader2, sub: 'รอหัวหน้ากลุ่มตรวจ' },
                       ].map((item, idx) => (
                         <div key={idx} className={`${item.color} p-8 rounded-[40px] border-4 border-white shadow-xl flex flex-col gap-3 hover:-translate-y-2 transition-all duration-300`}>
-                          <item.icon size={32} className="text-amber-900 opacity-80" />
+                          <div className="flex items-center justify-between">
+                            <item.icon size={32} className="text-amber-900 opacity-80" />
+                            <span className="text-[11px] font-black text-amber-900/70 bg-white/60 px-2 py-0.5 rounded-lg">{item.sub}</span>
+                          </div>
                           <span className="text-sm font-black text-amber-900/60 uppercase tracking-widest leading-none">{item.label}</span>
                           <span className="text-5xl font-black text-amber-950 leading-none">{item.value}</span>
                         </div>
                       ))}
                     </div>
 
-                    <div className="minimal-card space-y-10 bg-white border-[8px] border-amber-100 p-8 md:p-12 shadow-xl">
+                    {/* Unsubmitted Teachers Report from Sheet2 */}
+                    <UnsubmittedTeachersReport
+                      teachers={teachers}
+                      plans={plans}
+                      yearFilter={yearFilter}
+                      termFilter={termFilter}
+                      onYearChange={setYearFilter}
+                      onTermChange={setTermFilter}
+                      onRefreshTeachers={reloadTeachers}
+                      isRefreshing={isRefreshingTeachers}
+                    />
+
+                    <div className="minimal-card space-y-8 bg-white border-[8px] border-amber-100 p-8 md:p-12 shadow-xl">
                       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 pb-6 border-b-4 border-amber-50">
-                        <h3 className="text-2xl font-black text-amber-950">จำแนกตามกลุ่มสาระการเรียนรู้</h3>
-                        <div className="flex flex-wrap gap-4">
-                          <select className="bg-amber-100 text-lg font-black px-6 py-3 rounded-2xl outline-none border-2 border-amber-200" value={yearFilter} onChange={(e) => setYearFilter(e.target.value)}>
-                            {['ทั้งหมด', ...CONFIG.YEARS].map(y => <option key={y} value={y}>{y === 'ทั้งหมด' ? 'ปีการศึกษา: ทั้งหมด' : `ปีการศึกษา ${y}`}</option>)}
-                          </select>
-                          <select className="bg-amber-100 text-lg font-black px-6 py-3 rounded-2xl outline-none border-2 border-amber-200" value={termFilter} onChange={(e) => setTermFilter(e.target.value)}>
-                            {['ทั้งหมด', ...CONFIG.SEMESTERS].map(s => <option key={s} value={s}>{s === 'ทั้งหมด' ? 'ภาคเรียน: ทั้งหมด' : `ภาคเรียนที่ ${s}`}</option>)}
-                          </select>
-                          <select className="bg-amber-100 text-lg font-black px-6 py-3 rounded-2xl outline-none border-2 border-amber-200" value={deptFilter} onChange={(e) => setDeptFilter(e.target.value)}>
-                            {['ทั้งหมด', ...CONFIG.DEPARTMENTS].map(d => <option key={d} value={d}>{d === 'ทั้งหมด' ? 'กลุ่มสาระ: ทั้งหมด' : d}</option>)}
-                          </select>
+                        <div>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <h3 className="text-2xl font-black text-amber-950 flex items-center gap-3">
+                              <BarChart3 className="text-amber-600" size={28} /> สถิติการส่งแผนจำแนกตามกลุ่มสาระการเรียนรู้
+                            </h3>
+                          </div>
+                          <p className="text-sm font-bold text-amber-800/70 mt-1">
+                            ประจำภาคเรียนที่ <span className="font-black text-amber-950">{termFilter}</span> ปีการศึกษา <span className="font-black text-amber-950">{yearFilter}</span> • เปรียบเทียบจำนวนครู <span className="text-emerald-700 font-black">"ส่งแล้ว"</span> และ <span className="text-rose-600 font-black">"ค้างส่ง"</span> (ครูทั้งหมด {teachers.length} คน)
+                          </p>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-3">
+                          <div className="flex items-center gap-2 bg-amber-50 px-3 py-1.5 rounded-2xl border-2 border-amber-200">
+                            <Calendar size={18} className="text-amber-700" />
+                            <select className="bg-transparent text-sm md:text-base font-black text-amber-950 py-1 pr-2 outline-none cursor-pointer" value={yearFilter} onChange={(e) => setYearFilter(e.target.value)}>
+                              <option value="ทั้งหมด">ปีการศึกษา: ทั้งหมด</option>
+                              {CONFIG.YEARS.map(y => (
+                                <option key={y} value={y}>
+                                  ปีการศึกษา {y}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                          <div className="flex items-center gap-2 bg-amber-50 px-3 py-1.5 rounded-2xl border-2 border-amber-200">
+                            <Layers size={18} className="text-amber-700" />
+                            <select className="bg-transparent text-sm md:text-base font-black text-amber-950 py-1 pr-2 outline-none cursor-pointer" value={termFilter} onChange={(e) => setTermFilter(e.target.value)}>
+                              <option value="ทั้งหมด">ภาคเรียน: ทั้งหมด</option>
+                              {CONFIG.SEMESTERS.map(s => (
+                                <option key={s} value={s}>
+                                  ภาคเรียนที่ {s}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                          <div className="flex items-center gap-2 bg-amber-50 px-3 py-1.5 rounded-2xl border-2 border-amber-200">
+                            <BookOpen size={18} className="text-amber-700" />
+                            <select className="bg-transparent text-sm md:text-base font-black text-amber-950 py-1 pr-2 outline-none cursor-pointer" value={deptFilter} onChange={(e) => setDeptFilter(e.target.value)}>
+                              {['ทั้งหมด', ...CONFIG.DEPARTMENTS].map(d => <option key={d} value={d}>{d === 'ทั้งหมด' ? 'กลุ่มสาระ: ทั้งหมด' : d}</option>)}
+                            </select>
+                          </div>
                         </div>
                       </div>
 
-                      <div className="h-[450px] w-full">
+                      {/* Legend explanation bar */}
+                      <div className="flex flex-wrap items-center justify-between gap-4 bg-amber-50/70 p-4 rounded-2xl border border-amber-200">
+                        <div className="flex flex-wrap items-center gap-6 text-sm font-black">
+                          <div className="flex items-center gap-2">
+                            <span className="w-4 h-4 rounded-md bg-emerald-600 shadow-sm inline-block"></span>
+                            <span className="text-emerald-900">แท่งสีเขียว: ส่งแล้ว</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="w-4 h-4 rounded-md bg-rose-600 shadow-sm inline-block"></span>
+                            <span className="text-rose-900">แท่งสีแดง: ค้างส่ง</span>
+                          </div>
+                        </div>
+                        <div className="text-xs font-bold text-amber-800">
+                          * แสดงตัวเลขจำนวนครู (คน) บนหัวแท่งกราฟ
+                        </div>
+                      </div>
+
+                      <div className="h-[480px] w-full">
                         <ResponsiveContainer width="100%" height="100%">
-                          <BarChart data={chartData} margin={{ top: 20, right: 30, left: 0, bottom: 100 }}>
-                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#FED7AA" strokeWidth={2} />
+                          <BarChart data={chartData} margin={{ top: 35, right: 25, left: 0, bottom: 95 }}>
+                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#FED7AA" strokeWidth={1.5} />
                             <XAxis 
-                              dataKey="name" 
-                              angle={-45} 
+                              dataKey="displayName" 
+                              angle={-35} 
                               textAnchor="end" 
                               interval={0} 
+                              height={90}
                               tick={{ fontSize: 13, fontWeight: 900, fill: '#451A03' }} 
                             />
-                            <YAxis tick={{ fontSize: 13, fontWeight: 900, fill: '#451A03' }} />
-                            <Tooltip 
-                              cursor={{ fill: 'rgba(251, 191, 36, 0.1)' }}
-                              contentStyle={{ borderRadius: '24px', border: '6px solid #FCD34D', padding: '15px' }}
+                            <YAxis 
+                              allowDecimals={false}
+                              tick={{ fontSize: 13, fontWeight: 900, fill: '#451A03' }} 
+                              domain={[0, (dataMax: number) => Math.max(5, Math.ceil(dataMax * 1.15) + 1)]}
                             />
-                            <Bar dataKey="count" radius={[15, 15, 0, 0]}>
-                              {chartData.map((_entry, index) => (
-                                <Cell key={`cell-${index}`} fill={['#D97706', '#059669', '#2563EB', '#DC2626', '#7C3AED', '#D97706', '#059669', '#2563EB', '#DC2626'][index % 9]} />
-                              ))}
+                            <Tooltip 
+                              cursor={{ fill: 'rgba(251, 191, 36, 0.12)' }}
+                              contentStyle={{ 
+                                borderRadius: '20px', 
+                                border: '3px solid #F59E0B', 
+                                backgroundColor: '#FFFFFF',
+                                padding: '14px 18px',
+                                boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.1)' 
+                              }}
+                              formatter={(value: any, name: any) => [
+                                `${value} คน`,
+                                name
+                              ]}
+                              labelFormatter={(_label: any, payload: any) => {
+                                const item = payload?.[0]?.payload;
+                                return item?.fullname ? `กลุ่มสาระฯ ${item.fullname} (ครู ${item.total} คน)` : _label;
+                              }}
+                            />
+                            <Legend 
+                              verticalAlign="top" 
+                              align="right"
+                              wrapperStyle={{ paddingBottom: '25px', fontWeight: 900, fontSize: 14 }} 
+                            />
+                            <Bar 
+                              dataKey="submitted" 
+                              name="ส่งแล้ว (คน)" 
+                              fill="#059669" 
+                              radius={[8, 8, 0, 0]}
+                              maxBarSize={45}
+                            >
+                              <LabelList 
+                                dataKey="submitted" 
+                                position="top" 
+                                offset={8}
+                                formatter={(val: any) => typeof val === 'number' ? val : ''}
+                                style={{ fontWeight: 900, fontSize: 13, fill: '#059669' }} 
+                              />
+                            </Bar>
+                            <Bar 
+                              dataKey="unsubmitted" 
+                              name="ค้างส่ง (คน)" 
+                              fill="#DC2626" 
+                              radius={[8, 8, 0, 0]}
+                              maxBarSize={45}
+                            >
+                              <LabelList 
+                                dataKey="unsubmitted" 
+                                position="top" 
+                                offset={8}
+                                formatter={(val: any) => typeof val === 'number' ? val : ''}
+                                style={{ fontWeight: 900, fontSize: 13, fill: '#DC2626' }} 
+                              />
                             </Bar>
                           </BarChart>
                         </ResponsiveContainer>
+                      </div>
+
+                      {/* Summary badges below chart */}
+                      <div className="flex flex-wrap items-center justify-center gap-4 md:gap-8 pt-4 border-t-2 border-amber-100 text-sm font-black">
+                        <div className="flex items-center gap-2 text-emerald-800 bg-emerald-50 px-4 py-2 rounded-2xl border border-emerald-200 shadow-sm">
+                          <span className="w-3.5 h-3.5 rounded-full bg-emerald-600 inline-block"></span>
+                          <span>ส่งแล้วรวม: {chartData.reduce((acc, cur) => acc + cur.submitted, 0)} คน</span>
+                        </div>
+                        <div className="flex items-center gap-2 text-rose-800 bg-rose-50 px-4 py-2 rounded-2xl border border-rose-200 shadow-sm">
+                          <span className="w-3.5 h-3.5 rounded-full bg-rose-600 inline-block"></span>
+                          <span>ค้างส่งรวม: {chartData.reduce((acc, cur) => acc + cur.unsubmitted, 0)} คน</span>
+                        </div>
+                        <div className="flex items-center gap-2 text-amber-900 bg-amber-50 px-4 py-2 rounded-2xl border border-amber-200 shadow-sm">
+                          <Users size={16} className="text-amber-700" />
+                          <span>ครูในแผนภูมิ: {chartData.reduce((acc, cur) => acc + cur.total, 0)} คน</span>
+                        </div>
                       </div>
                     </div>
                  </motion.section>
@@ -586,7 +818,20 @@ export default function App() {
                           <label className="text-xl font-black text-amber-950 flex items-center gap-3">
                             <UserCheck size={28} className="text-amber-500" /> ชื่อ-นามสกุลครูผู้สอน
                           </label>
-                          <input name="userName" required placeholder="ระบุชื่อจริง-นามสกุล" className="input-field" />
+                          <input 
+                            name="userName" 
+                            required 
+                            placeholder="ระบุชื่อจริง-นามสกุล" 
+                            list="sheet2-teachers-datalist"
+                            className="input-field" 
+                          />
+                          <datalist id="sheet2-teachers-datalist">
+                            {teachers.map(t => (
+                              <option key={t.no || t.fullName} value={t.fullName}>
+                                {t.department} ({t.position || 'ครู'})
+                              </option>
+                            ))}
+                          </datalist>
                         </div>
                         <div className="space-y-3">
                           <label className="text-xl font-black text-amber-950 flex items-center gap-3">
@@ -605,10 +850,10 @@ export default function App() {
                             <Calendar size={28} className="text-amber-500" /> ปีการศึกษา / ภาคเรียน
                           </label>
                           <div className="flex gap-4">
-                            <select name="year" required className="input-field flex-1">
+                            <select name="year" required defaultValue={CONFIG.CURRENT_YEAR} className="input-field flex-1">
                               {CONFIG.YEARS.map(y => <option key={y} value={y}>{y}</option>)}
                             </select>
-                            <select name="semester" required className="input-field flex-1">
+                            <select name="semester" required defaultValue={CONFIG.CURRENT_SEMESTER} className="input-field flex-1">
                               {CONFIG.SEMESTERS.map(s => <option key={s} value={s}>เทอม {s}</option>)}
                             </select>
                           </div>
@@ -789,7 +1034,18 @@ export default function App() {
                     <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 border-l-[16px] border-green-500 pl-8 h-auto py-2">
                        <div className="flex items-center gap-4">
                          <History size={40} className="text-green-500" />
-                         <h2 className="text-3xl md:text-5xl font-black text-amber-950">ประวัติการส่งแผนการสอน</h2>
+                         <div>
+                           <div className="flex flex-wrap items-center gap-3">
+                             <h2 className="text-3xl md:text-5xl font-black text-amber-950">ประวัติการส่งแผนการสอน</h2>
+                             <span className="bg-emerald-600 text-white text-xs font-black px-3 py-1 rounded-full shadow-sm flex items-center gap-1.5">
+                               <span className="w-2 h-2 rounded-full bg-emerald-200 animate-pulse"></span>
+                               ค่าเริ่มต้น: ภาคเรียนที่ {CONFIG.CURRENT_SEMESTER}/{CONFIG.CURRENT_YEAR}
+                             </span>
+                           </div>
+                           <p className="text-sm font-bold text-amber-800/80 mt-1">
+                             แสดงข้อมูลตามปีและภาคเรียนที่เลือก สามารถเลือกเปลี่ยนเงื่อนไขหรือเลือก "ทั้งหมด" เพื่อดูย้อนหลังได้
+                           </p>
+                         </div>
                        </div>
                     </div>
 

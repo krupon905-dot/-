@@ -36,6 +36,9 @@ interface Props {
   plans: LessonPlanSummary[];
   yearFilter: string;
   termFilter: string;
+  latestYear?: string;
+  latestSemester?: string;
+  allYearOptions?: string[];
   onYearChange?: (y: string) => void;
   onTermChange?: (t: string) => void;
   onRefreshTeachers?: () => void;
@@ -47,11 +50,18 @@ export default function UnsubmittedTeachersReport({
   plans,
   yearFilter,
   termFilter,
+  latestYear,
+  latestSemester,
+  allYearOptions,
   onYearChange,
   onTermChange,
   onRefreshTeachers,
   isRefreshing = false
 }: Props) {
+  const effectiveLatestYear = latestYear || CONFIG.CURRENT_YEAR;
+  const effectiveLatestSemester = latestSemester || CONFIG.CURRENT_SEMESTER;
+  const isLatest = yearFilter === effectiveLatestYear && termFilter === effectiveLatestSemester;
+
   const [selectedDept, setSelectedDept] = useState<string>('ทั้งหมด');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [viewMode, setViewMode] = useState<'byDept' | 'all'>('byDept');
@@ -190,10 +200,10 @@ export default function UnsubmittedTeachersReport({
     const printWindow = window.open('', '_blank');
     if (!printWindow) return;
 
-    const isCurrent = yearFilter === CONFIG.CURRENT_YEAR && termFilter === CONFIG.CURRENT_SEMESTER;
+    const isLatest = yearFilter === effectiveLatestYear && termFilter === effectiveLatestSemester;
     const periodText = yearFilter === 'ทั้งหมด' 
       ? 'ทุกปีการศึกษา / ทุกภาคเรียน' 
-      : `ปีการศึกษา ${yearFilter} ${termFilter === 'ทั้งหมด' ? 'ทุกภาคเรียน' : `ภาคเรียนที่ ${termFilter}`}`;
+      : `ปีการศึกษา ${yearFilter} ${termFilter === 'ทั้งหมด' ? 'ทุกภาคเรียน' : `ภาคเรียนที่ ${termFilter}`}${isLatest ? ' (ปีการศึกษาและภาคเรียนล่าสุด)' : ''}`;
 
     const dateFormatted = new Date().toLocaleDateString('th-TH', {
       year: 'numeric',
@@ -320,10 +330,10 @@ export default function UnsubmittedTeachersReport({
                 <h3 className="text-2xl md:text-3xl font-black text-amber-950 flex items-center gap-2">
                   ตรวจเช็ครายชื่อครูที่ยังไม่ส่งแผนการจัดการเรียนรู้
                 </h3>
-                {yearFilter === CONFIG.CURRENT_YEAR && termFilter === CONFIG.CURRENT_SEMESTER ? (
-                  <span className="bg-emerald-600 text-white text-xs font-black px-3 py-1 rounded-full shadow-sm flex items-center gap-1">
+                {isLatest ? (
+                  <span className="bg-emerald-600 text-white text-xs font-black px-3 py-1 rounded-full shadow-sm flex items-center gap-1.5">
                     <span className="w-2 h-2 rounded-full bg-emerald-200 animate-pulse"></span>
-                    ภาคเรียนที่ {CONFIG.CURRENT_SEMESTER}/{CONFIG.CURRENT_YEAR}
+                    ปีการศึกษาและภาคเรียนล่าสุด (เทอม {effectiveLatestSemester}/{effectiveLatestYear})
                   </span>
                 ) : (
                   <span className="bg-amber-200 text-amber-950 text-xs font-black px-3 py-1 rounded-full shadow-sm">
@@ -332,7 +342,13 @@ export default function UnsubmittedTeachersReport({
                 )}
               </div>
               <p className="text-sm md:text-base font-bold text-amber-700/80 mt-1">
-                รายงานประจำ <span className="font-black text-amber-950">ปีการศึกษา {yearFilter} ภาคเรียนที่ {termFilter}</span> • ตรวจเช็ครายชื่อแต่ละกลุ่มสาระการเรียนรู้จาก Sheet2 ({teachers.length} ท่าน)
+                รายงานประจำ <span className="font-black text-amber-950">{yearFilter === 'ทั้งหมด' ? 'ทุกปีการศึกษา' : `ปีการศึกษา ${yearFilter}`} {termFilter === 'ทั้งหมด' ? 'ทุกภาคเรียน' : `ภาคเรียนที่ ${termFilter}`}</span>
+                {isLatest && (
+                  <span className="ml-2 text-emerald-800 font-black bg-emerald-100 px-2.5 py-0.5 rounded-lg border border-emerald-300 text-xs">
+                    (ปีการศึกษาและภาคเรียนล่าสุด)
+                  </span>
+                )}
+                {' '}• ตรวจเช็ครายชื่อแต่ละกลุ่มสาระการเรียนรู้จาก Sheet2 ({teachers.length} ท่าน)
               </p>
             </div>
           </div>
@@ -428,9 +444,9 @@ export default function UnsubmittedTeachersReport({
               className="bg-transparent font-black text-sm text-amber-950 outline-none cursor-pointer"
             >
               <option value="ทั้งหมด">ทุกปีการศึกษา</option>
-              {CONFIG.YEARS.map(y => (
+              {(allYearOptions && allYearOptions.length > 0 ? allYearOptions : CONFIG.YEARS).map(y => (
                 <option key={y} value={y}>
-                  ปี {y}
+                  ปี {y} {y === effectiveLatestYear ? '(ล่าสุด)' : ''}
                 </option>
               ))}
             </select>
@@ -446,23 +462,23 @@ export default function UnsubmittedTeachersReport({
               <option value="ทั้งหมด">ทุกภาคเรียน</option>
               {CONFIG.SEMESTERS.map(s => (
                 <option key={s} value={s}>
-                  ภาคเรียนที่ {s}
+                  ภาคเรียนที่ {s} {yearFilter === effectiveLatestYear && s === effectiveLatestSemester ? '(ล่าสุด)' : ''}
                 </option>
               ))}
             </select>
           </div>
 
-          {(yearFilter !== CONFIG.CURRENT_YEAR || termFilter !== CONFIG.CURRENT_SEMESTER) && (
+          {!isLatest && (
             <button
               onClick={() => {
-                onYearChange && onYearChange(CONFIG.CURRENT_YEAR);
-                onTermChange && onTermChange(CONFIG.CURRENT_SEMESTER);
+                onYearChange && onYearChange(effectiveLatestYear);
+                onTermChange && onTermChange(effectiveLatestSemester);
               }}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-2xl bg-amber-500 hover:bg-amber-600 text-white font-black text-xs transition-all shadow-sm active:scale-95"
-              title={`สลับกลับสู่ปี ${CONFIG.CURRENT_YEAR} ภาคเรียนที่ ${CONFIG.CURRENT_SEMESTER}`}
+              title={`สลับกลับสู่ปี ${effectiveLatestYear} ภาคเรียนที่ ${effectiveLatestSemester} (ล่าสุด)`}
             >
               <Clock size={14} />
-              <span>ดูเทอม {CONFIG.CURRENT_SEMESTER}/{CONFIG.CURRENT_YEAR}</span>
+              <span>ดูเทอมล่าสุด ({effectiveLatestSemester}/{effectiveLatestYear})</span>
             </button>
           )}
 

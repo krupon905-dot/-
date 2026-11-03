@@ -312,8 +312,16 @@ export function isTeacherSubmitted(
   targetSemester: string = 'ทั้งหมด'
 ): { hasSubmitted: boolean; matchedPlans: any[] } {
   const matched = plans.filter(p => {
-    if (targetYear !== 'ทั้งหมด' && String(p.year) !== String(targetYear)) return false;
-    if (targetSemester !== 'ทั้งหมด' && String(p.semester) !== String(targetSemester)) return false;
+    if (targetYear !== 'ทั้งหมด' && String(p.year ?? '').trim() !== String(targetYear).trim()) return false;
+    if (targetSemester !== 'ทั้งหมด') {
+      const pDigits = String(p.semester ?? '').replace(/[^0-9]/g, '').trim();
+      const tDigits = String(targetSemester).replace(/[^0-9]/g, '').trim();
+      if (pDigits && tDigits) {
+        if (pDigits !== tDigits) return false;
+      } else if (String(p.semester ?? '').trim() !== String(targetSemester).trim()) {
+        return false;
+      }
+    }
 
     if (!p.userName) return false;
     return isNamesFuzzyMatch(teacher.fullName, p.userName);
